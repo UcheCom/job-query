@@ -40,7 +40,16 @@ function App() {
       });
 
       const responseText = await response.text();
-      const data = responseText ? JSON.parse(responseText) : {};
+      let data = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          if (response.ok) {
+            throw new SyntaxError("Invalid JSON response", { cause: parseError });
+          }
+        }
+      }
 
       if (!response.ok) {
         throw new Error(data.error || responseText || "Something went wrong.");
