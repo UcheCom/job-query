@@ -43,6 +43,20 @@ const isRateLimitError = (error) => {
   );
 };
 
+const isAuthError = (error) => {
+  const message = (error?.message || "").toLowerCase();
+
+  return (
+    error?.status === 401 ||
+    error?.statusCode === 401 ||
+    error?.status === 403 ||
+    error?.statusCode === 403 ||
+    message.includes("api key") ||
+    message.includes("forbidden") ||
+    message.includes("leaked")
+  );
+};
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -54,10 +68,17 @@ app.post("/api/questions", async (req, res) => {
   try {
     const { jobTitle } = req.body || {};
     const normalizedJobTitle = typeof jobTitle === "string" ? jobTitle.trim() : "";
+    const MAX_JOB_TITLE_LENGTH = 120;
 
     if (!normalizedJobTitle) {
       return res.status(400).json({
         error: "Job title is required.",
+      });
+    }
+
+    if (normalizedJobTitle.length > MAX_JOB_TITLE_LENGTH) {
+      return res.status(400).json({
+        error: `Job title must be at most ${MAX_JOB_TITLE_LENGTH} characters or fewer.`,
       });
     }
 
@@ -90,13 +111,18 @@ app.post("/api/questions", async (req, res) => {
       model: GEMINI_MODEL,
     });
   } catch (error) {
-    console.error("Gemini API Error:", error);
-
-    const status = isRateLimitError(error) ? 429 : 500;
+    const status = isAuthError(error) ? 403 : isRateLimitError(error) ? 429 : 500;
     const message =
-      status === 429
-        ? "Gemini quota or rate limit reached. Try again later, or set GEMINI_MODEL to another available free-tier model."
-        : "Failed to generate interview questions.";
+      status === 403
+        ? "Gemini rejected the API key. Create a new Gemini API key, update server/.env, and keep the file out of Git."
+        : status === 429
+          ? "Gemini quota or rate limit reached. Try again later, or set GEMINI_MODEL to another available free-tier model."
+          : "Failed to generate interview questions.";
+
+    console.error("Gemini API Error:", {
+      status,
+      message: error?.message,
+    });
 
     res.status(status).json({
       error: message,
