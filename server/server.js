@@ -12,7 +12,12 @@ dotenv.config({
 });
 
 const PORT = Number(process.env.PORT) || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const DEFAULT_ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = [...DEFAULT_ALLOWED_ORIGINS, ...CLIENT_ORIGINS];
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 const GEMINI_API_BASE_URL =
   process.env.GEMINI_API_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
@@ -20,7 +25,14 @@ const GEMINI_API_BASE_URL =
 const app = express();
 app.use(
   cors({
-    origin: CLIENT_ORIGIN,
+    origin(origin, callback) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".vercel.app")) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
   }),
 );
 app.use(express.json());
@@ -123,6 +135,14 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     model: GEMINI_MODEL,
+  });
+});
+
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "job-query-api",
+    endpoints: ["/health", "/api/questions"],
   });
 });
 
